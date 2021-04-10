@@ -17,8 +17,6 @@ func main() {
 type LoggingListener struct{}
 
 func (m *LoggingListener) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	fmt.Println("==========================")
-	fmt.Println("LoggingListener")
 	if request.Method == "GET" {
 		logs, _ := json.Marshal(messagesByIds)
 		_, _ = writer.Write(logs)
