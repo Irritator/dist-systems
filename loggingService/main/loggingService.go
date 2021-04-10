@@ -5,9 +5,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"service"
 )
 
 var messagesByIds = make(map[string]string)
+
+func main() {
+	panic(http.ListenAndServe(service.LoggingServiceAddr, &LoggingListener{}))
+}
 
 type LoggingListener struct{}
 
@@ -22,7 +27,7 @@ func (m *LoggingListener) ServeHTTP(writer http.ResponseWriter, request *http.Re
 		if err != nil {
 			panic(err)
 		}
-		var requestInfo RequestInfo
+		var requestInfo service.RequestInfo
 		if err = json.Unmarshal(body, &requestInfo); err != nil {
 			panic(err)
 		} else {
