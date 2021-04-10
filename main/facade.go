@@ -9,10 +9,6 @@ import (
 	"net/http"
 )
 
-const facadeAddr = ":30000"
-const loggingServiceAddr = ":30001"
-const messagesServiceAddr = ":30002"
-
 type RequestInfo struct {
 	Id  string
 	Msg string
@@ -22,19 +18,6 @@ type RequestParams struct {
 	Msg string
 }
 
-func main() {
-	go func() {
-		_ = http.ListenAndServe(loggingServiceAddr, &LoggingListener{})
-	}()
-	go func() {
-		_ = http.ListenAndServe(messagesServiceAddr, &MessagingListener{})
-	}()
-	_ = http.ListenAndServe(facadeAddr, &FacadeListener{})
-}
-
-/********************************************/
-/* 			   FACADE
-/********************************************/
 type FacadeListener struct{}
 
 func (m *FacadeListener) ServeHTTP(writer http.ResponseWriter, request *http.Request) {

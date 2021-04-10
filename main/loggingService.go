@@ -7,9 +7,6 @@ import (
 	"net/http"
 )
 
-/********************************************/
-/* 			   LOGGING SERVICE
-/********************************************/
 var messagesByIds = make(map[string]string)
 
 type LoggingListener struct{}
