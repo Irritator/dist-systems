@@ -7,12 +7,16 @@ import (
 	"time"
 )
 
+var key = "key"
+
 func main() {
+	testMap := getMap("5701")
+	testMap.Put(key, 1)
 	//initMap()
 	//multipleConnectionsWithoutLock()
 	//multipleConnectionsPessimisticLock()
-	//multipleConnectionsOptimisticLock()
-	processQueue()
+	multipleConnectionsOptimisticLock()
+	//processQueue()
 }
 
 func multipleConnectionsWithoutLock() {
@@ -25,11 +29,11 @@ func updateWithoutLock(port string) {
 	testMap := getMap(port)
 	fmt.Println("map got on port " + port)
 	for i := 0; i < 1000; i++ {
-		value, _ := testMap.Get(i)
+		value, _ := testMap.Get(key)
 		newVal := value.(int64) + 1
 		time.Sleep(10 * time.Millisecond)
-		oldVal, _ := testMap.Put(i, newVal)
-		fmt.Println(i, " update SUCCESS on port "+port, " value is: ", newVal, "old value is: ", oldVal, "//old must be ", value)
+		oldVal, _ := testMap.Put(key, newVal)
+		fmt.Println("update SUCCESS on port "+port, " value is: ", newVal, "old value is: ", oldVal, "//old must be ", value)
 	}
 }
 
@@ -43,18 +47,17 @@ func updateWithPessimisticLock(port string) {
 	testMap := getMap(port)
 	fmt.Println("map got on port " + port)
 	for i := 0; i < 1000; i++ {
-		_ = testMap.Lock(i)
-		fmt.Println(i, " locked on port "+port)
-		value, _ := testMap.Get(i)
-		fmt.Println(i, "oldvalue ", value, " retrieved on port "+port)
+		_ = testMap.Lock(key)
+		fmt.Println("value locked on port " + port)
+		value, _ := testMap.Get(key)
 		newVal := value.(int64) + 1
-		time.Sleep(20 * time.Millisecond)
-		oldVal, _ := testMap.Put(i, newVal)
-		err := testMap.Unlock(i)
+		time.Sleep(10 * time.Millisecond)
+		oldVal, _ := testMap.Put(key, newVal)
+		err := testMap.Unlock(key)
 		if err != nil {
-			fmt.Println(i, " cannot write on port "+port)
+			fmt.Println("cannot write on port " + port)
 		} else {
-			fmt.Println(i, " update SUCCESS on port "+port, " value is: ", newVal, "old value is: ", oldVal, "//old must be ", value)
+			fmt.Println("value update SUCCESS on port "+port, " value is: ", newVal, "old value is: ", oldVal, "//old must be ", value)
 		}
 	}
 }
@@ -70,16 +73,16 @@ func updateWithOptimisticLock(port string) {
 	fmt.Println("map got on port " + port)
 	for i := 0; i < 1000; i++ {
 		for {
-			value, _ := testMap.Get(i)
-			fmt.Println(i, " || oldvalue ", value, " retrieved on port "+port)
+			value, _ := testMap.Get(key)
+			fmt.Println("oldvalue ", value, " retrieved on port "+port)
 			newVal := value.(int64) + 1
 			time.Sleep(20 * time.Millisecond)
-			isReplaced, _ := testMap.ReplaceIfSame(i, value, newVal)
+			isReplaced, _ := testMap.ReplaceIfSame(key, value, newVal)
 			if isReplaced {
-				fmt.Println(i, " || port: "+port, " || value updated successfully from ", value, " to ", newVal)
+				fmt.Println("port: "+port, " || value updated successfully from ", value, " to ", newVal)
 				break
 			} else {
-				fmt.Println(i, " || port: "+port, " || value changed during transaction. Try again")
+				fmt.Println("port: "+port, " || value changed during transaction. Try again")
 			}
 		}
 	}
@@ -96,8 +99,8 @@ func initMap() {
 }
 
 func processQueue() {
-	//go readFromQueue("5702")
-	//go readFromQueue("5703")
+	go readFromQueue("5702")
+	go readFromQueue("5703")
 	writeToQueue("5701")
 }
 
@@ -109,7 +112,6 @@ func writeToQueue(port string) {
 			fmt.Println(err)
 		}
 		fmt.Println(i, "added")
-		time.Sleep(100)
 	}
 }
 
@@ -118,7 +120,6 @@ func readFromQueue(port string) {
 	for {
 		index, _ := testQueue.Take()
 		fmt.Println(index, "is consumed on port "+port)
-		time.Sleep(100)
 	}
 }
 
@@ -137,7 +138,7 @@ func getQueue(port string) core.Queue {
 
 func getClient(port string) hazelcast.Client {
 	config := hazelcast.NewConfig()
-	config.NetworkConfig().AddAddress("127.0.0.1:" + port)
+	config.NetworkConfig().AddAddress("192.168.60.1:" + port)
 	client, _ := hazelcast.NewClientWithConfig(config)
 	return client
 }
