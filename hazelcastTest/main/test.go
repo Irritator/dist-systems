@@ -14,8 +14,8 @@ func main() {
 	testMap.Put(key, 1)
 	//initMap()
 	//multipleConnectionsWithoutLock()
-	//multipleConnectionsPessimisticLock()
-	multipleConnectionsOptimisticLock()
+	multipleConnectionsPessimisticLock()
+	//multipleConnectionsOptimisticLock()
 	//processQueue()
 }
 
