@@ -6,13 +6,20 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/streadway/amqp"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"service"
 )
 
+var ch *amqp.Channel
+var messageQueue amqp.Queue
+
 func main() {
+	conn, _ := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	ch, _ = conn.Channel()
+	messageQueue, _ = ch.QueueDeclare("messaging_service", true, false, false, false, nil)
 	panic(http.ListenAndServe(service.FacadeAddr, &FacadeListener{}))
 }
 
@@ -23,18 +30,9 @@ func (m *FacadeListener) ServeHTTP(writer http.ResponseWriter, request *http.Req
 	if request.Method == "GET" {
 		responseBody = getLogs() + "\n" + getMessages()
 	} else if request.Method == "POST" {
-		body, err := ioutil.ReadAll(request.Body)
-		if err != nil {
-			panic(err)
-		}
-		var params service.RequestParams
-		err = json.Unmarshal(body, &params)
-		if err != nil {
-			panic(err)
-		}
-		info := service.RequestInfo{Id: uuid.New().String(), Msg: params.Msg}
-		logRequestMessage, _ := json.Marshal(info)
-		err = sendToLogger(logRequestMessage)
+		reqParams := parseRequest(request)
+		err := sendToLogger(reqParams)
+		sendToMessenger(reqParams)
 		if err != nil {
 			responseBody = err.Error()
 		} else {
@@ -46,7 +44,7 @@ func (m *FacadeListener) ServeHTTP(writer http.ResponseWriter, request *http.Req
 
 func getLogs() string {
 	for i := 0; i < service.LoggerPortsSize; i++ {
-		logs, err := service.GetData(service.LoggingServiceAddr[i])
+		logs, err := service.Get(service.LoggingServiceAddr[i])
 		if err != nil {
 			fmt.Println("Logger on port " + service.LoggingServiceAddr[i] + " is not responding")
 		} else {
@@ -56,18 +54,29 @@ func getLogs() string {
 	return service.MsgServicesNotResponding
 }
 
+func parseRequest(request *http.Request) service.RequestParams {
+	body, _ := ioutil.ReadAll(request.Body)
+	var params service.RequestParams
+	_ = json.Unmarshal(body, &params)
+	return params
+}
+
 func getMessages() string {
-	messages, _ := service.GetData(service.MessagesServiceAddr)
+	i := rand.Int() % 3
+	messageServiceAddress := service.MessagesServiceAddr[i]
+	messages, _ := service.Get(messageServiceAddress)
 	return messages
 }
 
-func sendToLogger(message []byte) error {
+func sendToLogger(reqParams service.RequestParams) error {
+	info := service.RequestInfo{Id: uuid.New().String(), Msg: reqParams.Msg}
+	logRequestMessage, _ := json.Marshal(info)
 	for tryCount := 0; tryCount < 15; tryCount++ {
 		i := rand.Int() % 3
 		_, err := http.Post(
 			service.Localhost+service.LoggingServiceAddr[i],
 			"application/json",
-			bytes.NewReader(message))
+			bytes.NewReader(logRequestMessage))
 		if err == nil {
 			return nil
 		} else {
@@ -76,4 +85,13 @@ func sendToLogger(message []byte) error {
 		}
 	}
 	return errors.New(service.MsgServicesNotResponding)
+}
+
+func sendToMessenger(reqParams service.RequestParams) {
+	_ = ch.Publish(
+		"", messageQueue.Name, false, false,
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(reqParams.Msg),
+		})
 }

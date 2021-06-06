@@ -12,8 +12,7 @@ const FacadeAddr = ":31000"
 
 var LoggingServiceAddr = [...]string{":31101", ":31102", ":31103"}
 var HazelcastAddr = [...]string{":5701", ":5702", ":5703"}
-
-const MessagesServiceAddr = ":31002"
+var MessagesServiceAddr = [...]string{":31002", ":31003"}
 
 var LoggerPortsSize = len(LoggingServiceAddr)
 
@@ -26,7 +25,7 @@ type RequestParams struct {
 	Msg string
 }
 
-func GetData(serverAddress string) (string, error) {
+func Get(serverAddress string) (string, error) {
 	loggingResp, err := http.Get(Localhost + serverAddress)
 	if err != nil {
 		return "", err
