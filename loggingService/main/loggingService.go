@@ -6,18 +6,17 @@ import (
 	"github.com/hazelcast/hazelcast-go-client"
 	"github.com/hazelcast/hazelcast-go-client/core"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"service"
 )
 
 var logs core.Map
 
-//NOTE: now
 func main() {
-	port, hazelcastPort := findAvailablePort()
-	logs = getHazelcastMap(hazelcastPort)
-	_ = http.ListenAndServe(port, &LoggingListener{})
+	address, hazelcastAddress := service.GetLoggerWithHazelcast()
+	fmt.Println("address ===> ", address)
+	logs = getHazelcastMap(hazelcastAddress)
+	panic(http.ListenAndServe(address, &LoggingListener{}))
 }
 
 type LoggingListener struct{}
@@ -50,26 +49,13 @@ func (m *LoggingListener) ServeHTTP(writer http.ResponseWriter, request *http.Re
 	}
 }
 
-func getHazelcastMap(port string) core.Map {
+func getHazelcastMap(address string) core.Map {
 	config := hazelcast.NewConfig()
-	config.NetworkConfig().AddAddress("127.0.0.1" + port)
+	config.NetworkConfig().AddAddress(address)
 	client, err := hazelcast.NewClientWithConfig(config)
 	if err != nil {
 		fmt.Println(err)
 	}
 	logMap, _ := client.GetMap("log")
 	return logMap
-}
-
-func findAvailablePort() (string, string) {
-	for i := 0; i < len(service.LoggingServiceAddr); i++ {
-		listener, err := net.Listen("tcp", service.LoggingServiceAddr[i])
-		if err != nil {
-			fmt.Println(service.LoggingServiceAddr[i], " is already taken, try next one")
-		} else {
-			_ = listener.Close()
-			return service.LoggingServiceAddr[i], service.HazelcastAddr[i]
-		}
-	}
-	panic("All ports are unavailable")
 }

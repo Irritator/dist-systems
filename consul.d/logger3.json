@@ -1,0 +1,9 @@
+{
+  "service": {
+    "name": "logger3",
+    "port": 31103,
+    "meta": {
+    	"hazelcastAddress": "127.0.0.1:5703"
+    }
+  }
+}

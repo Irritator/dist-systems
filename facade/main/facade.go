@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/streadway/amqp"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 	"service"
 )
@@ -17,10 +16,12 @@ var ch *amqp.Channel
 var messageQueue amqp.Queue
 
 func main() {
-	conn, _ := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	queueName := service.GetConsulValue(service.QueueNameParam)
+	conn, _ := amqp.Dial(service.GetServiceAddress(service.MessageQueueServiceName))
 	ch, _ = conn.Channel()
-	messageQueue, _ = ch.QueueDeclare("messaging_service", true, false, false, false, nil)
-	panic(http.ListenAndServe(service.FacadeAddr, &FacadeListener{}))
+	messageQueue, _ = ch.QueueDeclare(queueName, true, false, false, false, nil)
+	port := service.GetAvailablePort(service.Facades)
+	panic(http.ListenAndServe(port, &FacadeListener{}))
 }
 
 type FacadeListener struct{}
@@ -43,10 +44,11 @@ func (m *FacadeListener) ServeHTTP(writer http.ResponseWriter, request *http.Req
 }
 
 func getLogs() string {
-	for i := 0; i < service.LoggerPortsSize; i++ {
-		logs, err := service.Get(service.LoggingServiceAddr[i])
+	for i := 0; i < len(service.Loggers); i++ {
+		address := service.GetServiceAddress(service.Loggers[i])
+		logs, err := service.Get(address)
 		if err != nil {
-			fmt.Println("Logger on port " + service.LoggingServiceAddr[i] + " is not responding")
+			fmt.Println("Logger on port " + address + " is not responding")
 		} else {
 			return logs
 		}
@@ -62,8 +64,7 @@ func parseRequest(request *http.Request) service.RequestParams {
 }
 
 func getMessages() string {
-	i := rand.Int() % 3
-	messageServiceAddress := service.MessagesServiceAddr[i]
+	messageServiceAddress := service.GetRandomAddress(service.Messengers)
 	messages, _ := service.Get(messageServiceAddress)
 	return messages
 }
@@ -72,16 +73,17 @@ func sendToLogger(reqParams service.RequestParams) error {
 	info := service.RequestInfo{Id: uuid.New().String(), Msg: reqParams.Msg}
 	logRequestMessage, _ := json.Marshal(info)
 	for tryCount := 0; tryCount < 15; tryCount++ {
-		i := rand.Int() % 3
+		loggerAddress := service.GetRandomAddress(service.Loggers)
+		fmt.Println("loggerAddress ===> ", loggerAddress)
 		_, err := http.Post(
-			service.Localhost+service.LoggingServiceAddr[i],
+			loggerAddress,
 			"application/json",
 			bytes.NewReader(logRequestMessage))
 		if err == nil {
 			return nil
 		} else {
 			tryCount++
-			fmt.Println("Cannot send message to logger " + service.LoggingServiceAddr[i])
+			fmt.Println("Cannot send message to logger " + loggerAddress)
 		}
 	}
 	return errors.New(service.MsgServicesNotResponding)

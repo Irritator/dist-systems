@@ -1,0 +1,6 @@
+{
+  "service": {
+    "name": "messenger2",
+    "port": 31003
+  }
+}

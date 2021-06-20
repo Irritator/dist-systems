@@ -1,0 +1,7 @@
+{
+  "service": {
+    "name": "messageQueue",
+    "port": 5672,
+    "address": "amqp://guest:guest@localhost"
+  }
+}

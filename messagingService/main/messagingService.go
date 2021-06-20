@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/streadway/amqp"
-	"net"
 	"net/http"
 	"service"
 	"strings"
@@ -14,9 +13,10 @@ var messageQueue amqp.Queue
 var messages []string
 
 func main() {
-	conn, _ := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	queueName := service.GetConsulValue(service.QueueNameParam)
+	conn, _ := amqp.Dial(service.GetServiceAddress(service.MessageQueueServiceName))
 	ch, _ = conn.Channel()
-	messageQueue, _ = ch.QueueDeclare("messaging_service", true, false, false, false, nil)
+	messageQueue, _ = ch.QueueDeclare(queueName, true, false, false, false, nil)
 	msgs, _ := ch.Consume(messageQueue.Name, "", true, false, false, false, nil)
 
 	go func() {
@@ -27,7 +27,8 @@ func main() {
 		}
 	}()
 
-	panic(http.ListenAndServe(findAvailablePort(), &MessagingListener{}))
+	port := service.GetAvailablePort(service.Messengers)
+	panic(http.ListenAndServe(port, &MessagingListener{}))
 }
 
 type MessagingListener struct{}
@@ -38,17 +39,4 @@ func (m *MessagingListener) ServeHTTP(writer http.ResponseWriter, request *http.
 		_, _ = writer.Write([]byte(text))
 	}
 
-}
-
-func findAvailablePort() string {
-	for i := 0; i < len(service.MessagesServiceAddr); i++ {
-		listener, err := net.Listen("tcp", service.MessagesServiceAddr[i])
-		if err != nil {
-			fmt.Println(service.MessagesServiceAddr[i], " is already taken, try next one")
-		} else {
-			_ = listener.Close()
-			return service.MessagesServiceAddr[i]
-		}
-	}
-	panic("All ports are unavailable")
 }

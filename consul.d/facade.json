@@ -1,0 +1,6 @@
+{
+  "service": {
+    "name": "facade1",
+    "port": 31000
+  }
+}
