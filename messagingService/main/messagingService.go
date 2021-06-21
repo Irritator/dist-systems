@@ -13,8 +13,9 @@ var messageQueue amqp.Queue
 var messages []string
 
 func main() {
+	serviceInfo := service.RegisterService(service.Messenger)
 	queueName := service.GetConsulValue(service.QueueNameParam)
-	conn, _ := amqp.Dial(service.GetServiceAddress(service.MessageQueueServiceName))
+	conn, _ := amqp.Dial(service.GetConsulValue(service.MessageQueueServiceAddress))
 	ch, _ = conn.Channel()
 	messageQueue, _ = ch.QueueDeclare(queueName, true, false, false, false, nil)
 	msgs, _ := ch.Consume(messageQueue.Name, "", true, false, false, false, nil)
@@ -27,8 +28,7 @@ func main() {
 		}
 	}()
 
-	port := service.GetAvailablePort(service.Messengers)
-	panic(http.ListenAndServe(port, &MessagingListener{}))
+	panic(http.ListenAndServe(serviceInfo.GetStringPort(), &MessagingListener{}))
 }
 
 type MessagingListener struct{}

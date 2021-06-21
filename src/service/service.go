@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -12,16 +13,17 @@ import (
 )
 
 const MsgServicesNotResponding = "all logging services are not responding"
-const QueueNameParam = "queueName"
-const MessageQueueServiceName = "messageQueue"
-
 const Localhost = "http://127.0.0.1"
-const consulServices = Localhost + ":8500/v1/agent/service/"
+const consulServiceDescribe = Localhost + ":8500/v1/catalog/service/"
+const consulServiceRegister = Localhost + ":8500/v1/agent/service/register"
 const consulKeyValue = Localhost + ":8500/v1/kv/"
+const hazelcast = "hazelcast/"
 
-var Facades = []string{"facade1", "facade2"}
-var Loggers = []string{"logger1", "logger2", "logger3"}
-var Messengers = []string{"messenger1", "messenger2"}
+const Facade = "facade"
+const Logger = "logger"
+const Messenger = "messenger"
+const MessageQueueServiceAddress = "messageQueueAddress"
+const QueueNameParam = "queueName"
 
 type RequestInfo struct {
 	Id  string
@@ -34,10 +36,32 @@ type RequestParams struct {
 
 type ConsulServiceDTO struct {
 	Id      string
-	Service string
+	Name    string
 	Address string
 	Port    int
 	Meta    MetaDTO
+}
+
+type ConsulServiceGetDTO struct {
+	ServiceID      string
+	ServiceName    string
+	ServiceAddress string
+	ServicePort    int
+	ServiceMeta    MetaDTO
+}
+
+func (serviceDto ConsulServiceDTO) GetStringPort() string {
+	return ":" + strconv.Itoa(serviceDto.Port)
+}
+func (serviceDto ConsulServiceDTO) GetFullAddress() string {
+	return serviceDto.Address + serviceDto.GetStringPort()
+}
+
+func (serviceDto ConsulServiceGetDTO) GetStringPort() string {
+	return ":" + strconv.Itoa(serviceDto.ServicePort)
+}
+func (serviceDto ConsulServiceGetDTO) GetFullAddress() string {
+	return serviceDto.ServiceAddress + serviceDto.GetStringPort()
 }
 
 type MetaDTO struct {
@@ -48,10 +72,66 @@ type ValueDTO struct {
 	Value string
 }
 
-func GetAvailablePort(serviceNames []string) string {
-	for i := 0; i < len(serviceNames); i++ {
-		port := GetServicePort(serviceNames[i])
-		listener, err := net.Listen("tcp", port)
+func RegisterService(serviceName string) ConsulServiceDTO {
+	port := GetAvailablePort()
+	existingServices := getServices(serviceName)
+	index := len(existingServices) + 1
+	serviceId := serviceName + strconv.Itoa(index)
+	var meta MetaDTO
+	if serviceName == Logger {
+		meta.HazelcastAddress = GetConsulValue(hazelcast + strconv.Itoa(index))
+	}
+	return registerService(serviceId, serviceName, Localhost, port, meta)
+}
+
+func registerService(id string, serviceName string, address string, port int, meta MetaDTO) ConsulServiceDTO {
+	serviceDescribe := ConsulServiceDTO{
+		Id:      id,
+		Name:    serviceName,
+		Address: address,
+		Port:    port,
+		Meta:    meta,
+	}
+	bodyJson, _ := json.Marshal(serviceDescribe)
+	req, _ := http.NewRequest(http.MethodPut, consulServiceRegister, bytes.NewBuffer(bodyJson))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	client := &http.Client{}
+	res, _ := client.Do(req)
+	fmt.Println(string(bodyJson))
+	fmt.Println(res)
+	fmt.Println("Starting service " + serviceName + " on port " + serviceDescribe.GetStringPort())
+	return serviceDescribe
+}
+
+func getServices(serviceName string) []ConsulServiceDTO {
+	resp, _ := http.Get(consulServiceDescribe + serviceName)
+	body, _ := ioutil.ReadAll(resp.Body)
+	var serviceInfos []ConsulServiceGetDTO
+	_ = json.Unmarshal(body, &serviceInfos)
+	var convertedServiceInfos []ConsulServiceDTO
+	for i := 0; i < len(serviceInfos); i++ {
+		convertedServiceInfos = append(convertedServiceInfos, ConsulServiceDTO{
+			Id:      serviceInfos[i].ServiceID,
+			Name:    serviceInfos[i].ServiceName,
+			Address: serviceInfos[i].ServiceAddress,
+			Port:    serviceInfos[i].ServicePort,
+			Meta:    serviceInfos[i].ServiceMeta,
+		})
+	}
+	return convertedServiceInfos
+}
+
+func GetRandomService(serviceName string) ConsulServiceDTO {
+	services := getServices(serviceName)
+	if len(services) == 0 {
+		panic("No services available: " + serviceName)
+	}
+	return services[rand.Int()%len(services)]
+}
+
+func GetAvailablePort() int {
+	for port := 40000; port < 65535; port++ {
+		listener, err := net.Listen("tcp", ":"+strconv.Itoa(port))
 		if err != nil {
 			fmt.Println("the port number", port, " is already taken, try next one")
 		} else {
@@ -62,57 +142,16 @@ func GetAvailablePort(serviceNames []string) string {
 	panic("no ports available")
 }
 
-func GetLoggerWithHazelcast() (string, string) {
-	for i := 0; i < len(Loggers); i++ {
-		serviceInfo := getServiceInfo(Loggers[i])
-		port := ":" + strconv.Itoa(serviceInfo.Port)
-		listener, err := net.Listen("tcp", port)
-		if err != nil {
-			fmt.Println("the port number", port, " is already taken, try next one")
-		} else {
-			_ = listener.Close()
-			return port, serviceInfo.Meta.HazelcastAddress
-		}
-	}
-	panic("no ports available")
-}
-
-func GetRandomAddress(serviceNames []string) string {
-	index := rand.Int() % len(serviceNames)
-	return GetServiceAddress(serviceNames[index])
-}
-
-func GetServicePort(serviceName string) string {
-	serviceInfo := getServiceInfo(serviceName)
-	return ":" + strconv.Itoa(serviceInfo.Port)
-}
-
-func GetServiceAddress(serviceName string) string {
-	serviceInfo := getServiceInfo(serviceName)
-	if serviceInfo.Address == "" {
-		serviceInfo.Address = Localhost
-	}
-	return serviceInfo.Address + ":" + strconv.Itoa(serviceInfo.Port)
-}
-
-func getServiceInfo(serviceName string) *ConsulServiceDTO {
-	resp, _ := http.Get(consulServices + serviceName)
-	if resp.StatusCode == 404 {
-		panic("no addresses available")
-	}
-	body, _ := ioutil.ReadAll(resp.Body)
-	var serviceInfo ConsulServiceDTO
-	_ = json.Unmarshal(body, &serviceInfo)
-	return &serviceInfo
-}
-
 func GetConsulValue(key string) string {
+	fmt.Println("get value from Cosul: " + key)
 	resp, _ := http.Get(consulKeyValue + key)
 	body, _ := ioutil.ReadAll(resp.Body)
 	var values []ValueDTO
 	_ = json.Unmarshal(body, &values)
+	if len(values) == 0 {
+		panic("value is missing in consul: " + key)
+	}
 	decodedMsg, _ := base64.StdEncoding.DecodeString(values[0].Value)
-	fmt.Println("key ===> ", key)
 	fmt.Println("value ===> ", string(decodedMsg))
 	return string(decodedMsg)
 }

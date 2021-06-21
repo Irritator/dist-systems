@@ -13,10 +13,9 @@ import (
 var logs core.Map
 
 func main() {
-	address, hazelcastAddress := service.GetLoggerWithHazelcast()
-	fmt.Println("address ===> ", address)
-	logs = getHazelcastMap(hazelcastAddress)
-	panic(http.ListenAndServe(address, &LoggingListener{}))
+	serviceInfo := service.RegisterService(service.Logger)
+	logs = getHazelcastMap(serviceInfo.Meta.HazelcastAddress)
+	panic(http.ListenAndServe(serviceInfo.GetStringPort(), &LoggingListener{}))
 }
 
 type LoggingListener struct{}
